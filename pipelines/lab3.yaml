@@ -1,0 +1,43 @@
+stages:
+    - restore
+    - static-typing
+    - lint
+    - build
+    - test
+
+image: node:latest
+
+before_script:
+    - curl -f https://get.pnpm.io/v6.16.js | node - add --global pnpm@7
+    - pnpm config set store-dir .pnpm-store
+
+restore-job:
+    stage: restore
+    script:
+        - pnpm install
+    artifacts:
+        paths:
+        - node_modules/
+
+static-typing-job:
+    stage: static-typing
+    script:
+        - pnpm type-check
+
+lint-job:
+    stage: lint
+    script:
+        - pnpm eslint . --ext .vue,.js,.jsx,.cjs,.mjs,.ts,.tsx,.cts,.mts --fix --ignore-path .gitignore
+
+build-job:
+    stage: build
+    script:
+        - pnpm build
+    artifacts:
+        paths:
+            - dist/
+
+test-job:
+    stage: test
+    script:
+        - pnpm vitest

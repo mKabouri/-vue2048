@@ -1,0 +1,95 @@
+workflow:
+  rules:
+    - if: '$CI_COMMIT_REF_NAME =~ /^feature\//'
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+
+stages:
+    - build
+    - quality
+
+image: node:latest
+
+cache: &global_cache
+  key:
+    files:
+      - pnpm-lock.yaml
+  paths:
+    - .pnpm-store
+    - node_modules/
+  policy: pull-push
+
+before_script:
+    - curl -f https://get.pnpm.io/v6.16.js | node - add --global pnpm@7
+    - pnpm config set store-dir .pnpm-store
+
+restore-dependencies:
+    stage: build
+    cache:
+        <<: *global_cache
+        policy: pull
+    script:
+        - pnpm install
+
+# Condition directly in the script
+# build-package:
+#     stage: build
+#     needs:
+#         - restore-dependencies
+#     script:
+#         - if [ "$CI_PIPELINE_SOURCE" == "web" ]; then pnpm build; fi
+#     artifacts:
+#         name: "$CI_PROJECT_TITLE-$Version"
+#         paths:
+#             - dist/
+
+build-package:on-web:
+    stage: build
+    needs:
+        - restore-dependencies
+    script:
+        - pnpm build
+    rules:
+        - if: $CI_PIPELINE_SOURCE == "web"
+    artifacts:
+        name: "$CI_PROJECT_TITLE-$Version"
+        paths:
+            - dist/
+
+build-package:
+    stage: build
+    needs:
+        - restore-dependencies
+    script:
+        - pnpm build
+    rules:
+        - if: $CI_PIPELINE_SOURCE != "web"
+
+static-typing:
+    stage: quality
+    script:
+        - pnpm type-check
+
+lint:
+    stage: quality
+    needs:
+        - static-typing
+    script:
+        - pnpm lint
+
+test:
+    stage: quality
+    rules:
+        - if: $CI_COMMIT_REF_NAME == "main"
+    script:
+        - pnpm test
+
+security-analysis:
+    stage: quality
+    script:
+        - pnpm outdated --format json > ./outdated-dependencies.json || true
+        - pnpm audit --json > ./vulnerable-dependencies.json || true
+    artifacts:
+        name: reports
+        paths:
+            - ./outdated-dependencies.json
+            - ./vulnerable-dependencies.json

@@ -1,51 +1,41 @@
-stages:
-  - build
-  - qa
-  - production
+name: GitHub Actions pipeline
+on:
+    push:
+      branches:
+        - lab9
+        - main
+    pull_request:
+      branches:
+        - lab9
+        - main
+    workflow_dispatch:
 
-workflow:
-  rules:
-    - if: $CI_PIPELINE_SOURCE == 'merge_request_event'
-    - if: $CI_PIPELINE_SOURCE != 'merge_request_event'
-
-default:
-  image: node: latest-alpine
-  cache:
-    key:
-      files:
-        - pnpm-lock.yaml
-    paths:
-      - .pnpm-store
-      - node_modules/
-    policy: pull
-
-  before_script:
-    - curl -f https://get.pnpm.io/v6.16.js | node - add --global pnpm@7
-    - pnpm config set store-dir .pnpm-store
-
-build:
-  stage: build
-  cache: &global_cache
-    policy: pull-push
-  script:
-    - pnpm install
-    - pnpm run build
-  artifacts:
-    paths:
-      - dist/*
-
-deploy-qa:
-  stage: qa
-  environment:
-    name: qa
-    url: https://lemon-sky-0ff19c110.2.azurestaticapps.net
-  script:
-    - pnpm dlx @azure/static-web-apps-cli deploy ./dist --app-name stapp-vue2048-qa --api-location /.api --token $AZURE_STATIC_WEB_APPS_API_TOKEN --no-logs
-
-deploy-production:
-  stage: production
-  environment:
-    name: production
-    url: https://delightful-mushroom-03f3a5d03.2.azurestaticapps.net
-  script:
-    - pnpm dlx @azure/static-web-apps-cli deploy ./dist --app-name stapp-vue2048-prod --api-location /.api --token $AZURE_STATIC_WEB_APPS_API_TOKEN --no-logs
+jobs:
+    build:
+      runs-on: ubuntu-latest
+      steps:
+        - name: checkout
+          uses: actions/checkout@v2
+          with:
+            path: '.'
+        - name: cache
+          uses: actions/cache@v2
+          with:
+            path: |
+              node_modules/ 
+        - name: install pnpm
+          run: |
+            curl -f https://get.pnpm.io/v6.16.js | node - add --global pnpm@7
+            pnpm config set store-dir .pnpm-store  
+        - name: build
+          run: |
+              pnpm install
+              pnpm build
+        - name: static-analysis
+          run: |
+            pnpm type-check
+            pnpm lint
+                
+        - name: unit-test
+          run: |
+            pnpm test  

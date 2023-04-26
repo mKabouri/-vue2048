@@ -92,7 +92,7 @@ jobs:
       with:
         skip_app_build: true
         action: upload 
-        azure_static_web_apps_api_token: ${{ secrets.AZURE_QA_DEPLOY_TOKEN }}
+        azure_static_web_apps_api_token: ${{ secrets.DEPLOY_TOKEN }}
         app_artifact_location: ${{github.workspace}} 
     - name : deploy prod
       uses: Azure/static-web-apps-deploy@v1

@@ -25,8 +25,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - name : checkout
-    - uses: actions/checkout@v3
-    - uses: pnpm/action-setup@v2
+      uses: actions/checkout@v3
+      uses: pnpm/action-setup@v2
     - name: install pnpm
       run : |
         curl -f https://get.pnpm.io/v6.16.js | node - add --global pnpm@7

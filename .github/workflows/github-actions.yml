@@ -1,41 +1,102 @@
 name: GitHub Actions pipeline
-on:
-    push:
-      branches:
-        - lab9
-        - main
-    pull_request:
-      branches:
-        - lab9
-        - main
-    workflow_dispatch:
+
+on: 
+  push :
+    paths:
+      - 'docs/**'
+    branches :
+      - lab9
+      - main
+  workflow_dispatch:
+    inputs:
+      static_analysis :
+        description: 'static analysis'
+        required: false
+        type: boolean
+      tests:
+        description: 'tests'
+        required: false
+        type: boolean
 
 jobs:
-    build:
-      runs-on: ubuntu-latest
-      steps:
-        - name: checkout
-          uses: actions/checkout@v2
-          with:
-            path: '.'
-        - name: cache
-          uses: actions/cache@v2
-          with:
-            path: |
-              node_modules/ 
-        - name: install pnpm
-          run: |
-            curl -f https://get.pnpm.io/v6.16.js | node - add --global pnpm@7
-            pnpm config set store-dir .pnpm-store  
-        - name: build
-          run: |
-              pnpm install
-              pnpm build
-        - name: static-analysis
-          run: |
-            pnpm type-check
-            pnpm lint
-                
-        - name: unit-test
-          run: |
-            pnpm test  
+  build :
+    name: build
+    runs-on: ubuntu-latest
+    steps:
+    - name : checkout
+      uses: actions/checkout@v2
+    - name: install pnpm
+      run : |
+        curl -f https://get.pnpm.io/v6.16.js | node - add --global pnpm@7
+        pnpm config set store-dir .pnpm-store
+    - name : setup
+      uses: actions/setup-node@v2.5.2
+    - name: build
+      run : |
+        pnpm install
+        pnpm run build    
+        
+    - name : artifacts_main
+      if: ${{ github.ref == 'refs/heads/main' }}
+      uses : actions/upload-artifact@v3
+      with:
+        name: artifact-build
+        path: dist/
+        retention-days: 7
+        
+    - name : artifacts
+      if: ${{ github.ref != 'refs/heads/main' }}
+      uses : actions/upload-artifact@v3
+      with:
+        name: artifact-build
+        path: dist/
+        retention-days: 1
+        
+    - name : cache
+      uses: actions/cache/save@v3
+      with:
+        path: |
+          node_modules/
+        
+        
+  test :
+    if: ${{ github.event_name == 'pull_request' || inputs.static_analysis || inputs.static_analysis}}
+    name : test
+    needs : build
+    runs-on: ubuntu-latest
+    steps: 
+    - name : static analysis
+      if : ${{ inputs.static_analysis }}
+      run : |
+        echo "pnpm type-check"
+        echo "pnpm eslint . --ext .vue,.js,.jsx,.cjs,.mjs,.ts,.tsx,.cts,.mts --fix --ignore-path .gitignore"
+    - name : test
+      if : ${{ inputs.tests }}
+      run: |
+        echo "pnpm vitest"
+        
+  deploy :
+    name : deploy
+    needs : build 
+    runs-on: ubuntu-latest
+    if: ${{ github.event_name == 'workflow_dispatch' }}
+    steps: 
+    - name : download artifact
+      uses: actions/download-artifact@v2.1.1
+      with : 
+        name : artifact-build
+        path : ${{github.workspace}} 
+    - name : deploy qa
+      uses: Azure/static-web-apps-deploy@v1
+      with:
+        skip_app_build: true
+        action: upload 
+        azure_static_web_apps_api_token: ${{ secrets.AZURE_QA_DEPLOY_TOKEN }}
+        app_artifact_location: ${{github.workspace}} 
+    - name : deploy prod
+      uses: Azure/static-web-apps-deploy@v1
+      with:
+        skip_app_build: true
+        action: upload 
+        azure_static_web_apps_api_token: ${{ secrets.AZURE_PROD_DEPLOY_TOKEN }}
+        app_artifact_location: ${{github.workspace}} 

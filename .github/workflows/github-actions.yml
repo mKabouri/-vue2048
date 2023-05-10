@@ -1,103 +1,72 @@
-name: GitHub Actions pipeline
+name: CI/CD pipeline
 
-on: 
-  push :
-    paths:
-      - 'docs/**'
-    branches :
-      - lab9
-      - main
+on:
+  push:
+    branches:
+      - lab11
   workflow_dispatch:
-    inputs:
-      static_analysis :
-        description: 'static analysis'
-        required: false
-        default: true
-        type: boolean
-      tests:
-        description: 'tests'
-        required: false
-        default: true
-        type: boolean
+    
+env:
+  BUILD_ARTIFACT_NAME: "package"
 
 jobs:
-  build :
+  build:
     runs-on: ubuntu-latest
     steps:
-    - name : checkout
-      uses: actions/checkout@v3
-    - name: install pnpm
-      run : |
-        curl -f https://get.pnpm.io/v6.16.js | node - add --global pnpm@7
-        pnpm config set store-dir .pnpm-store
-    - name : setup
-      uses: actions/setup-node@v2.5.2
-    - name: build
-      run : |
-        pnpm install
-        pnpm run build    
-        
-    - name : artifacts_deployment
-      if: ${{ github.ref == 'refs/heads/main' }}
-      uses : actions/upload-artifact@v3
-      with:
-        name: artifact-build
-        path: dist/
-        retention-days: 7
-        
-    - name : artifacts
-      if: ${{ github.ref != 'refs/heads/main' }}
-      uses : actions/upload-artifact@v3
-      with:
-        name: artifact-build
-        path: dist/
-        retention-days: 1
-        
-    - name : cache
-      uses: actions/cache/save@v3
-      with:
-        path: |
-          node_modules/
-        
-        
-  test :
-    if: ${{ github.event_name == 'pull_request' || inputs.static_analysis || inputs.static_analysis}}
-    name : test
-    needs : build
-    runs-on: ubuntu-latest
-    steps: 
-    - name : static analysis
-      if : ${{ inputs.static_analysis }}
-      run : |
-        echo "pnpm type-check"
-        echo "pnpm eslint . --ext .vue,.js,.jsx,.cjs,.mjs,.ts,.tsx,.cts,.mts --fix --ignore-path .gitignore"
-    - name : test
-      if : ${{ inputs.tests }}
-      run: |
-        echo "pnpm vitest"
-        
-  deploy :
-    name : deploy
-    needs : build 
-    runs-on: ubuntu-latest
-    if: ${{ github.event_name == 'workflow_dispatch' }}
-    steps: 
-    - name : download artifact
-      uses: actions/download-artifact@v2.1.1
-      with : 
-        name : artifact-build
-        path : ${{github.workspace}} 
-    - name : deploy qa
-      uses: Azure/static-web-apps-deploy@v1
-      with:
-        skip_app_build: true
-        action: upload 
-        azure_static_web_apps_api_token: ${{ secrets.DEPLOY_TOKEN }}
-        app_artifact_location: ${{github.workspace}} 
-    - name : deploy prod
-      uses: Azure/static-web-apps-deploy@v1
-      with:
-        skip_app_build: true
-        action: upload 
-        azure_static_web_apps_api_token: ${{ secrets.AZURE_PROD_DEPLOY_TOKEN }}
-        app_artifact_location: ${{github.workspace}} 
+      - uses: actions/checkout@v3
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: latest
+
+      - name: Set node version to 18
+        uses: actions/setup-node@v3
+        with:
+          node-version: 18
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install
+        working-directory: infra
+
+      - name: Provision infrastructure
+        uses: pulumi/actions@v4.2.1
+        with:
+          command: up
+          stack-name: teachingiac/vue-2048-mk-mk/dev
+          work-dir: infra
+          env:
+            PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
+            ARM_CLIENT_ID: ${{ secrets.ARM_CLIENT_ID}}
+            ARM_CLIENT_SECRET: ${{ secrets.ARM_CLIENT_SECRET}}
+            ARM_TENANT_ID: ${{ secrets.ARM_TENANT_ID}}
+            ARM_SUBSCRIPTION_ID: ${{ secrets.ARM_SUBSCRIPTION_ID}}
+      
+      - name: Build package
+        run: | 
+          pnpm install
+          pnpm build
+      
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v3
+        with:
+            name: ${{env.BUILD_ARTIFACT_NAME}}
+            path: dist/
+
+  # deploy-app:
+  #   needs: build
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - name: Fetch build artifact
+  #       uses: actions/download-artifact@v3
+  #       with:
+  #         name: ${{env.BUILD_ARTIFACT_NAME}}
+  #         path: ${{github.workspace}}
+  #     - name: Deploy to PROD
+  #       uses: Azure/static-web-apps-deploy@v1
+  #       with:
+  #         azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN }}
+  #         action: "upload"
+  #         app_location: ${{github.workspace}}
+  #         skip_app_build: true
